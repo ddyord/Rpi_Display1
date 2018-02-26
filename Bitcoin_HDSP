@@ -1,0 +1,185 @@
+import RPi.GPIO as GPIO
+import time
+from datetime import datetime
+import requests, json
+GPIO.setwarnings(False)
+
+GPIO.setmode(GPIO.BCM)
+
+##PIN DEFINITIONS
+###const int CLS =  #/must be high for internal clock source
+###const int CLK = 0 #/ output from the display clock
+###const int RD_N =   #/ should stay 1 for writing to display
+###const int FL_N =   #/ should stay 1 for Character RAM
+WR_N = 4
+CE_N = 17
+RST_N = 27   #  # should stay HIGH
+D0 = 22
+D1 = 5
+D2 = 6
+D3 = 13
+D4 = 26
+D5 = 18
+D6 = 23
+D7 = 24  #  #/ must be 0 for 128 ASCII interface, 1 for UDC CODE
+ # # CHAR ADDR 000-leftmost , 111- rightmost
+ADDR0 = 25
+ADDR1 = 12
+ADDR2 = 12
+ADDR3 = 20  # # should stay 1 for Character RAM, 0 for control
+ # #const int A4 =   # should stay 1 for Character RAM
+
+ # #/ Control word address FL_1, A4_1, A3_0, A2-0 Dont care
+ # ## CONTROL WORDS
+FLASH = 8
+BLINK = 16
+BRIGHTNESS_53 = 2   # #/ 53% brightness
+
+ # # FUNCTION DEFINITIONS
+DATA_OUT_BITS = 0
+DATA_IN_STR = "0"
+
+HIGH = 1
+LOW = 0
+
+
+GPIO.setup(WR_N, GPIO.OUT)
+GPIO.setup(CE_N, GPIO.OUT)
+GPIO.setup(RST_N, GPIO.OUT)
+GPIO.setup(D0, GPIO.OUT)
+GPIO.setup(D1, GPIO.OUT)
+GPIO.setup(D2, GPIO.OUT)
+GPIO.setup(D3, GPIO.OUT)
+GPIO.setup(D4, GPIO.OUT)
+GPIO.setup(D5, GPIO.OUT)
+GPIO.setup(D6, GPIO.OUT)
+GPIO.setup(D7, GPIO.OUT)
+
+GPIO.setup(ADDR0, GPIO.OUT)
+GPIO.setup(ADDR1, GPIO.OUT)
+GPIO.setup(ADDR2, GPIO.OUT)
+GPIO.setup(ADDR3, GPIO.OUT)
+
+GPIO.output(CE_N, HIGH)
+GPIO.output(WR_N, HIGH)
+
+
+def writeControl() :
+        GPIO.output(CE_N, HIGH)
+        GPIO.output(WR_N, HIGH)
+        #GPIO.output(RD_N, HIGH)
+        #GPIO.output(FL_N, HIGH)
+
+        #setup character ram address
+        GPIO.output(ADDR0, HIGH)
+        GPIO.output(ADDR1, HIGH)
+        GPIO.output(ADDR2, HIGH)
+        GPIO.output(ADDR3, LOW)
+        #GPIO.output(A4, HIGH)
+
+        GPIO.output(CE_N, LOW)
+
+        GPIO.output(D0, BRIGHTNESS_53 & 1)
+        GPIO.output(D1, BRIGHTNESS_53 & 2)
+        GPIO.output(D2, BRIGHTNESS_53 & 4)
+        GPIO.output(D3, BRIGHTNESS_53 & 8)
+        GPIO.output(D4, BRIGHTNESS_53 & 16)
+        GPIO.output(D5, BRIGHTNESS_53 & 32)
+        GPIO.output(D6, BRIGHTNESS_53 & 64)
+        GPIO.output(D7, LOW)
+
+        GPIO.output(WR_N, LOW)
+        GPIO.output(WR_N, HIGH)
+        GPIO.output(CE_N, HIGH)
+        GPIO.output(ADDR3, HIGH)
+        time.sleep(1)
+        return
+
+def writeData(inputData):
+
+        GPIO.output(CE_N, HIGH)
+        #GPIO.output(RD_N, HIGH)
+        #GPIO.output(FL_N, HIGH)
+
+        #setup character ram address
+        GPIO.output(ADDR3, HIGH)
+        #GPIO.output(A4, HIGH)
+        time.sleep(1)
+
+        inputList = list(inputData)
+        print (inputList)
+
+        for i in range(0, 7):
+                        DATA_OUT_BITS = ord(inputList[i])
+
+                        ## clears the display bits for a word that is shorter
+                        if ( DATA_OUT_BITS == 0b00000000): DATA_OUT_BITS = 0b00100000
+
+                        #/sets up the character address - 000 Left most
+                        GPIO.output(ADDR0, i&1)
+                        GPIO.output(ADDR1, i&2)
+                        GPIO.output(ADDR2, i&4)
+
+                        GPIO.output(CE_N, LOW)
+
+                        GPIO.output(D0, DATA_OUT_BITS & 1)
+                        GPIO.output(D1, DATA_OUT_BITS & 2)
+                        GPIO.output(D2, DATA_OUT_BITS & 4)
+                        GPIO.output(D3, DATA_OUT_BITS & 8)
+                        GPIO.output(D4, DATA_OUT_BITS & 16)
+                        GPIO.output(D5, DATA_OUT_BITS & 32)
+                        GPIO.output(D6, DATA_OUT_BITS & 64)
+                        GPIO.output(D7, LOW)
+
+                        printDataout(DATA_OUT_BITS) ### this is for throubleshooting
+
+                        GPIO.output(WR_N, LOW)
+
+                        GPIO.output(WR_N, HIGH)
+
+                        GPIO.output(CE_N, HIGH)
+                        time.sleep(1)
+        return
+
+def printDataout(datain):
+        print ('DATA_OUT_BITS')
+        print str(datain)
+        print ('DATA_OUT_BITS converted back')
+        print chr(datain)
+        
+        print ('ANDed bits')
+        print str(datain & 1)
+        print str(datain & 2)
+        print str(datain & 4)
+        print str(datain & 8)
+        print str(datain & 16)
+        print str(datain & 32)
+        print str(datain & 64)
+
+def DisplayReset() :
+
+        GPIO.output(CE_N, HIGH)  ##maybe remove this
+        GPIO.output(RST_N, LOW)
+        time.sleep(0.000001)
+        GPIO.output(RST_N, HIGH)
+        time.sleep(0.01)
+        GPIO.output(ADDR3, HIGH)
+        return
+
+
+
+
+def loopTicker():
+	val=0
+	while 1:
+		r=requests.get('http://api.coindesk.com/v1/bpi/currentprice.json')
+		if abs(float(val)-(r.json()['bpi']['USD']['rate_float']))>.1: print str(datetime.now()), (r.json()['bpi']['USD']['rate_float'])
+		val='%.2f' % (r.json()['bpi']['USD']['rate_float'])
+		time.sleep(1)
+		writeData(val)
+
+DisplayReset()
+writeControl()
+loopTicker()
+
+exit
